@@ -280,10 +280,16 @@
         }
 
         function openPaymentApp(upiUrl) {
-            // When user taps the button, open the UPI link
-            // On iOS in browser: shows app chooser
-            // On Android: opens default app
-            window.location.href = upiUrl;
+            // Use iframe to trigger UPI - bypasses WhatsApp interception
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = upiUrl;
+            document.body.appendChild(iframe);
+            
+            // Clean up after a moment
+            setTimeout(() => {
+                document.body.removeChild(iframe);
+            }, 1000);
         }
 
         function escapeHtml(text) {
