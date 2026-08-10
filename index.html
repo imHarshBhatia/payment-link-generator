@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>UPI Payment Link Generator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -51,7 +52,9 @@
         .pay-details { background: #f5f5f5; padding: 15px; border-radius: 8px; margin: 20px 0; font-size: 14px; color: #666; line-height: 1.8; text-align: left; }
         .pay-btn { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 15px 30px; border: none; border-radius: 6px; font-size: 18px; font-weight: bold; cursor: pointer; margin-bottom: 20px; width: 100%; }
         .pay-btn:hover { opacity: 0.9; }
-        .pay-note { color: #999; font-size: 12px; }
+        .pay-note { color: #999; font-size: 12px; line-height: 1.6; }
+        .qr-container { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; display: inline-block; }
+        #qrcode { margin: 0 auto; }
     </style>
 </head>
 <body>
@@ -60,7 +63,7 @@
         <p class="subtitle">Generate short, shareable payment links</p>
 
         <div class="info-box">
-            📌 <strong>How it works:</strong> Fill in your details and generate a short link that works on WhatsApp, SMS, and Email - with proper app chooser on iPhone!
+            📌 <strong>How it works:</strong> Fill in your details and generate a link. iPhone users get a QR code, Android users get a direct link button.
         </div>
 
         <div id="successMsg" class="msg success"></div>
@@ -123,8 +126,8 @@
                 <strong>Share this link anywhere!</strong><br>
                 ✓ Works on WhatsApp, SMS, Email<br>
                 ✓ Works on iPhone & Android<br>
-                ✓ Shows app chooser on iPhone<br>
-                ✓ Short and easy to share
+                ✓ iPhone: Share link, users scan QR code to pay<br>
+                ✓ Android: Direct payment app button
             </p>
         </div>
     </div>
@@ -132,6 +135,15 @@
     <script>
         let currentLink = '';
         let currentParams = {};
+        let currentUPI = '';
+
+        function detectDevice() {
+            const ua = navigator.userAgent.toLowerCase();
+            return {
+                isIOS: /iphone|ipad|ipod/.test(ua),
+                isAndroid: /android/.test(ua)
+            };
+        }
 
         function generateLink() {
             const upiId = document.getElementById('upiId').value.trim();
@@ -169,6 +181,12 @@
             const baseUrl = window.location.origin + window.location.pathname;
             currentLink = baseUrl + '?' + params.toString();
             currentParams = Object.fromEntries(params);
+
+            // Build UPI URL
+            let upiUrl = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(payeeName)}&am=${amount}`;
+            if (description) upiUrl += `&tn=${encodeURIComponent(description)}`;
+            if (invoiceId) upiUrl += `&tr=${encodeURIComponent(invoiceId)}`;
+            currentUPI = upiUrl;
 
             // Display the link
             document.getElementById('generatedLink').textContent = currentLink;
@@ -255,7 +273,7 @@
             if (desc) upiUrl += `&tn=${encodeURIComponent(desc)}`;
             if (inv) upiUrl += `&tr=${encodeURIComponent(inv)}`;
 
-            // Create the payment page
+            const device = detectDevice();
             const detailsHtml = `
                 ${cust ? `<strong>Bill To:</strong> ${escapeHtml(cust)}<br>` : ''}
                 <strong>Payee:</strong> ${escapeHtml(name)}<br>
@@ -263,33 +281,58 @@
                 ${inv ? `<strong>Invoice:</strong> ${escapeHtml(inv)}` : ''}
             `;
 
-            document.getElementById('generatorContainer').innerHTML = `
+            let content = `
                 <div class="pay-page-container">
                     <h1>💰 Payment</h1>
                     <div class="pay-amount">Rs ${amount}</div>
                     <div class="pay-details">${detailsHtml}</div>
+            `;
+
+            if (device.isIOS) {
+                // iPhone: Show QR code
+                content += `
+                    <div class="qr-container" id="qrcode"></div>
+                    <div class="pay-note" style="margin-top: 20px;">
+                        <strong>📱 iPhone User:</strong><br>
+                        Open camera or any QR code scanner app and scan the QR code above to pay.
+                    </div>
+                `;
+            } else {
+                // Android: Show direct button
+                content += `
                     <button class="pay-btn" onclick="openPaymentApp('${upiUrl.replace(/'/g, "\\'")}')">
                         Open in Payment App
                     </button>
                     <div class="pay-note">
-                        <strong>iPhone:</strong> Tap above → Select your UPI app from options<br>
-                        <strong>Android:</strong> Tap above → Opens your default payment app
+                        <strong>🤖 Android User:</strong><br>
+                        Tap above to open your payment app with details pre-filled.
                     </div>
+                `;
+            }
+
+            content += `
                 </div>
             `;
+
+            document.getElementById('generatorContainer').innerHTML = content;
+
+            // If iOS, generate QR code
+            if (device.isIOS && document.getElementById('qrcode')) {
+                setTimeout(() => {
+                    new QRCode(document.getElementById('qrcode'), {
+                        text: upiUrl,
+                        width: 256,
+                        height: 256,
+                        colorDark: '#000000',
+                        colorLight: '#ffffff',
+                        correctLevel: QRCode.CorrectLevel.H
+                    });
+                }, 100);
+            }
         }
 
         function openPaymentApp(upiUrl) {
-            // Use iframe to trigger UPI - bypasses WhatsApp interception
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            iframe.src = upiUrl;
-            document.body.appendChild(iframe);
-            
-            // Clean up after a moment
-            setTimeout(() => {
-                document.body.removeChild(iframe);
-            }, 1000);
+            window.location.href = upiUrl;
         }
 
         function escapeHtml(text) {
